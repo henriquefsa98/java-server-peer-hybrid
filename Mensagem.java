@@ -5,13 +5,13 @@ public class Mensagem {
 
     public String requisicao;
 
-    public InetAddress ipv4client;
+    public InetAddress ipv4client=null;
 
-    public int udpport;
+    public int udpport=-1;
 
-    public int udpAlivePort;
+    public int udpAlivePort=-1;
 
-    public int tcpport;
+    public int tcpport=-1;
     
     public long filelenght;
 
@@ -57,13 +57,23 @@ public class Mensagem {
 
     }
 
-    // Mensagem para SEARCH - pedido e para Download - pedido
+    // Mensagem para / SEARCH - pedido / Download - pedido
     public Mensagem(String req, String arqn, long filel){
 
         requisicao = req;
         nomeArquivo = arqn;
         filelenght = filel;
     
+    }
+
+    // Mensagem para Update
+    public Mensagem(String req, InetAddress peeraddr, int udpp, String newarq){
+
+        requisicao = req;
+        ipv4client = peeraddr;
+        udpport = udpp;
+        nomeArquivo = newarq;
+
     }
 
 

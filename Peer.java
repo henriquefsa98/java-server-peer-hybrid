@@ -22,11 +22,12 @@ import com.google.gson.GsonBuilder;
 
 public class Peer {
 
-    public static File fDest = new File("F:/UFABC/2022/2Q/SistemasDistribuidos/Projeto-Sist-Dist/Destino/");
+    //public static File fDest = new File("F:/UFABC/2022/2Q/SistemasDistribuidos/Projeto-Sist-Dist/Destino/");
 
     public static File fOrigin = new File("F:/Teste");
     //public static File fOrigin = new File("F:/UFABC/2022/2Q/SistemasDistribuidos/Projeto-Sist-Dist/Arquivos/");
 
+    public static File fDest = fOrigin;
     public static void main(String[] args) throws Exception {
 
         Scanner sc = new Scanner(System.in);
@@ -141,7 +142,7 @@ public class Peer {
                     System.out.println("Por Favor digite a porta do peer que ira fornecer o arquivo: ");
                     peerServerPort =  Integer. parseInt(sc.nextLine());
 
-                    DownloadReceiveThread drt = new DownloadReceiveThread(peerServerPort, peerServerAddress, arqname);
+                    DownloadReceiveThread drt = new DownloadReceiveThread(peerServerPort, peerServerAddress, serverAddress, arqname, peerSocket.getLocalPort());
                     drt.start();
 
                     break;
@@ -277,14 +278,18 @@ public class Peer {
 
         private int originport;
         private InetAddress originaddress;
+        private InetAddress serverIP;
         private String filename;
+        private int udpkeyport;    // usado para chamar o update após baixar um novo arquivo
         
         
-        public DownloadReceiveThread(int port, InetAddress addr, String filen){
+        public DownloadReceiveThread(int port, InetAddress addr, InetAddress server, String filen, int udpp){
 
             originport = port;
             originaddress = addr;
+            serverIP = server;
             filename = filen;
+            udpkeyport = udpp;
 
         }
 
@@ -354,23 +359,31 @@ public class Peer {
 
                 long fileSize = receivedMsg.filelenght;
 
-                byte[] buffer = new byte[4*1024];
+                byte[] buffer = new byte[512*1024];
 
+                //System.out.println("tamanho do arquivo: " + fileSize);
+                //System.out.println("tamanho do buffer: " + buffer.length);
 
-                while (fileSize > 0/* && (bytes = dataInputS.read(buffer)) != -1*/){
+                while (fileSize > 0 && (bytes = dataInputS.read(buffer, 0, (int)Math.min((long)buffer.length, fileSize))) != -1){
 
-                    bytes = dataInputS.read(buffer);
-                    fileOutStream.write(buffer);;
+                    fileOutStream.write(buffer, 0, bytes);
+                    fileOutStream.flush();
                     fileSize -= (long)bytes;
-                                  
+                    
+                             
                     //System.out.println("bytes faltantes: " + fileSize);
 
                 }
+                
 
                 //System.out.println("fileSize: " + fileSize + ", bytes: " + bytes);
 
-                //System.out.println("Arquivo baixado com sucesso no receptor!");
+                System.out.println("Arquivo " + filename + " baixado com sucesso na pasta " + fDest.getCanonicalPath());
     
+                Updatethread upt = new Updatethread(serverIP, socket.getLocalAddress(), udpkeyport, filename);
+
+                upt.start();
+
                 fileOutStream.close();
 
                 socket.close();
@@ -378,7 +391,8 @@ public class Peer {
             }
             catch(Exception e) {
 
-                e.printStackTrace();
+                //e.printStackTrace();
+                System.out.println("Conexao recusada, alguma informacao incorreta! Favor tentar refazer o download!");
 
             }
 
@@ -408,7 +422,7 @@ public class Peer {
                 BufferedReader brin = new BufferedReader(new InputStreamReader(clientsocket.getInputStream()));
 
                 //byte[] receivedData = new byte[1024];
-                int bytes = 0;
+                
 
                 //System.out.println("Iniciando envio de arquivo, aguardando o nome do arquivo...");
 
@@ -470,18 +484,26 @@ public class Peer {
 
 
                 // enviar em pedacinhos, verificar o tamanho ideal de buffer?
-                byte[] buffer = new byte[4*1024];
-                //long fileSize = arqRequested.length();
+                byte[] buffer = new byte[512*1024];
+                
+                int bytes = 0;
 
-                while ((bytes=fInputS.read(buffer)) != -1){
+                long start = System.currentTimeMillis();
+                long endtime;
 
+                while (/*fileSize > 0*/ (bytes=fInputS.read(buffer)) != -1){
+
+                    
                     dataOutS.write(buffer, 0, bytes);
                     dataOutS.flush();
-                    //fileSize-=bytes;
+                    
+                    //System.out.println("Bytes enviados: " + bytes);
 
                 }
+
+                endtime = System.currentTimeMillis();
                 //dataOutS.flush();
-                System.out.println("Arquivo enviado com sucesso!");
+                System.out.println("Arquivo enviado com sucesso em " + (endtime - start) + " milisegundos!");
 
                 dataInputS.close();
                 dataOutS.close();
@@ -498,6 +520,95 @@ public class Peer {
 
         }
 
+    }
+
+    public static class Updatethread extends Thread{
+
+        private InetAddress serverAddress;
+        private InetAddress peerAddres;
+        private int udpport;
+        private String novoArquivo;
+
+        private int tentativas=0;
+
+        public Updatethread(InetAddress server, InetAddress addr, int udpp, String newarq){
+
+            serverAddress = server;
+            peerAddres = addr;
+            udpport = udpp;
+            novoArquivo = newarq;
+
+        }
+
+        public void run(){
+
+            Mensagem updateMsg = new Mensagem("UPDATE", peerAddres, udpport, novoArquivo);
+
+            while(tentativas < 3){
+
+                try{
+
+                    DatagramSocket s = new DatagramSocket();
+
+                    byte[] sendBuffer = new byte[1024];
+                    byte[] receiveBuffer = new byte[1024];
+
+                    Gson gson = new Gson();
+
+                    sendBuffer = gson.toJson(updateMsg).getBytes();
+
+                    DatagramPacket updatePacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, 10098);
+                    DatagramPacket updateOkPacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+
+                    
+
+                    s.setSoTimeout(2000);
+
+                    s.send(updatePacket);
+
+                    s.receive(updateOkPacket);
+
+                    String informationReceived = new String(updateOkPacket.getData(), updateOkPacket.getOffset(), updateOkPacket.getLength());
+
+                    Mensagem response = gson.fromJson(informationReceived, Mensagem.class);
+
+                    if (response.requisicao.equals("UPDATE_OK")){
+
+                        System.out.println("Lista de arquivos disponiveis atualizada com sucesso!");
+                        
+                        tentativas += 5;
+                        s.close();
+
+                    }
+                    else{
+
+                        System.out.println("Update sem resposta, tentando novamente....");
+                        tentativas++;
+
+                    }
+
+
+                }
+            
+                catch(Exception e){
+
+                    tentativas++;
+
+                }
+            }
+
+            if (tentativas <= 3){
+
+                System.out.println("Nao foi possivel atualizar a lista de arquivos no servidor, conexao instavel!");
+
+            }
+            
+
+
+        }
+
+
+        
     }
 
     public static class Leavethread extends Thread{
@@ -566,7 +677,7 @@ public class Peer {
             }
             
 
-            if (tentativas >= 3){
+            if (tentativas <= 3){
 
                 System.out.println("Nao foi possivel sair do servidor, conexao instavel!");
 

@@ -4,6 +4,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -68,7 +69,7 @@ public class Servidor{
         DatagramSocket serverSocket = new DatagramSocket(10098, InetAddress.getByName("127.0.0.1"));   // porta especifica!
 
         System.out.println("Server iniciado");
-        System.out.println("Endereco: " + serverSocket.getLocalAddress() + ", Porta: " + serverSocket.getLocalPort());
+        System.out.println("Endereco: " + serverSocket.getLocalAddress().getHostAddress() + ", Porta: " + serverSocket.getLocalPort());
 
         while(true){
 
@@ -79,7 +80,7 @@ public class Servidor{
             DatagramPacket receivedPacket = new DatagramPacket(receivedBuffer, receivedBuffer.length);
 
 
-            System.out.println("Aguardando pacote...");
+            //System.out.println("Aguardando pacote...");
 
             serverSocket.receive(receivedPacket);
 
@@ -109,15 +110,29 @@ public class Servidor{
                 case "LEAVE":
 
                     LeavethreadServer leaveThread = new LeavethreadServer(clientPort, msgClient.udpport, clientAddress);
+                    System.out.println("chave de clilog de saida: " + clientAddress.toString()+":"+msgClient.udpport);
+                    System.out.println("Peer " + clientAddress.getHostAddress() + ":" + clientPort + " saiu. Eliminando seus arquivos " + Arrays.toString(clientesLogados.get(clientAddress.toString()+":"+msgClient.udpport).arquivos));
+                    
                     leaveThread.start();
-
+                    
                     break;
 
                 case "SEARCH":
 
                     SearchthreadServer sts = new SearchthreadServer(clientAddress, clientPort, msgClient.nomeArquivo);
 
+                    System.out.println("Peer " + receivedPacket.getAddress().getHostAddress() + ":" + receivedPacket.getPort() + " solicitou arquivo " + msgClient.nomeArquivo);
+
+
                     sts.start();
+
+                    break;
+
+                case "UPDATE":
+
+                    UpdatethreadServer upserver = new UpdatethreadServer(msgClient, receivedPacket.getPort());
+
+                    upserver.start();
 
                     break;
 
@@ -127,6 +142,71 @@ public class Servidor{
         }
 
     }
+
+    public static class UpdatethreadServer extends Thread{
+
+        private Mensagem updateMsg;
+        private int udpResponseport;
+
+        public UpdatethreadServer(Mensagem upmsg, int udpp){
+
+            updateMsg = upmsg;
+            udpResponseport = udpp;
+        }
+
+        
+        public void run(){
+
+
+            if (!updateMsg.requisicao.equals("UPDATE") || updateMsg.nomeArquivo.equals("") || updateMsg.udpport==-1){
+
+                System.out.println("Requisicao de update invalida, cancelando operacao!");
+                return;
+
+            }
+
+
+            try{
+
+                DatagramSocket s = new DatagramSocket();
+
+                Mensagem updateOK = new Mensagem("UPDATE_OK");
+
+                byte[] sendBuffer = new byte[1024];
+
+                Gson gson = new Gson();
+
+                sendBuffer = gson.toJson(updateOK).getBytes();
+
+                DatagramPacket updateOKPacket = new DatagramPacket(sendBuffer, sendBuffer.length, updateMsg.ipv4client, udpResponseport);
+
+                s.send(updateOKPacket);
+
+                Mensagem updateClient = clientesLogados.get(updateMsg.ipv4client+":"+udpResponseport);
+
+                ArrayList<String> novosArquivos = new ArrayList<>();
+
+                Collections.addAll(novosArquivos, updateClient.arquivos);
+
+                novosArquivos.add(updateMsg.nomeArquivo);
+
+                updateClient.arquivos = novosArquivos.toArray(new String[0]);
+
+                clientesLogados.replace((updateMsg.ipv4client+":"+udpResponseport), updateClient);
+
+                s.close();
+
+            }
+            catch(Exception e){
+
+
+            }
+   
+
+        }
+
+    }
+
 
     public static class SearchthreadServer extends Thread{
 
@@ -339,20 +419,22 @@ public class Servidor{
 
         public void run(){
 
-            // fazer as demais validações de join, como lista de arqs!
-            if (joinMessage.requisicao.equals("JOIN") == false){  
+            // Valida se a requisicao de join esta completa, como a req correta, endereco ip e as devidas portas
+            if (!joinMessage.requisicao.equals("JOIN") || joinMessage.ipv4client==null || joinMessage.udpport==-1 || joinMessage.tcpport==-1 || joinMessage.udpAlivePort==-1){  
                 System.out.println("Requisicao invalida para join!");
                 joinMessage.printMensagem();
                 System.out.println(joinMessage.requisicao + " != JOIN = " + (joinMessage.requisicao != "JOIN"));
                 return;
             }
 
-            System.out.println("Endereco do peer no threadjoinserver: " + peerAddress);
+            //System.out.println("Endereco do peer no threadjoinserver: " + peerAddress);
 
 
             byte[] responseData = new byte[1024];
 
             Gson gson = new Gson();
+
+            System.out.println("chave de clientelogados: " + joinMessage.ipv4client.toString() + ':' + joinMessage.udpport);
 
             clientesLogados.put((joinMessage.ipv4client.toString() + ':' + joinMessage.udpport), joinMessage);
 
@@ -362,7 +444,7 @@ public class Servidor{
 
             DatagramPacket serverResponsePacket = new DatagramPacket(responseData, responseData.length, peerAddress, clientport);
 
-            System.out.println("endereco do cliente: " + serverResponsePacket.getSocketAddress() + clientport);
+            System.out.println("Peer " + peerAddress.getHostAddress() + ":" + clientport + " adicionado com arquivos " + Arrays.toString(joinMessage.arquivos));
 
             try {
 
