@@ -22,12 +22,8 @@ import com.google.gson.GsonBuilder;
 
 public class Peer {
 
-    //public static File fDest = new File("F:/UFABC/2022/2Q/SistemasDistribuidos/Projeto-Sist-Dist/Destino/");
-
-    public static File fOrigin = new File("F:/Teste");
-    //public static File fOrigin = new File("F:/UFABC/2022/2Q/SistemasDistribuidos/Projeto-Sist-Dist/Arquivos/");
-
-    public static File fDest = fOrigin;
+    public static File pastaArquivos;
+    
     public static void main(String[] args) throws Exception {
 
         Scanner sc = new Scanner(System.in);
@@ -42,30 +38,37 @@ public class Peer {
 
         DownloadController clientDC = new DownloadController(tcpSocket);  // tcp
 
+        String pastapath;
+
         clientDC.start();
 
         Alivethread alive = new Alivethread(aliveSocket);    // alive thread
         alive.start();
 
 
-        System.out.println("address inicial: " + peerSocket.getLocalAddress());
+        System.out.println("address inicial: " + peerSocket.getLocalAddress() + ":" + peerSocket.getLocalPort());
 
         InetAddress serverAddress = InetAddress.getByName("127.0.0.1");
 
-        // verifica se a pasta de destino de arquivos existe, se nao, cria
-        if(!fDest.exists()){
-            fDest.mkdirs();
-        }
-        // verifica se a pasta de origem de arquivos existe, se nao, cria
-        if (!fOrigin.exists()){
-            fOrigin.mkdirs();
+
+        // Pede ao usuário que digite o caminho da pasta de arquivos desejada
+        System.out.println("Por favor, digite o caminho da pasta que contem os arquivos, e que recebera os downloads: ");
+
+        pastapath = sc.nextLine();
+        pastaArquivos = new File(pastapath);
+
+
+        // verifica se a pasta de arquivos existe, se nao, cria
+        if(!pastaArquivos.exists()){
+            pastaArquivos.mkdirs();
         }
 
+        // Gera uma lista com todos os arquivos contidos na pasta informada pelo usuario
         File[] arquivosF;
 
         ArrayList<String> nomeArquivos = new ArrayList<String>();
 
-        arquivosF = fOrigin.listFiles();
+        arquivosF = pastaArquivos.listFiles();
 
         for(int i=0; i < arquivosF.length; i++){
             if(arquivosF[i].isFile()){
@@ -73,9 +76,8 @@ public class Peer {
             }
         }
 
-        // For each pathname in the pathnames array
+        // Imprime o nome de todos os arquivos contidos na pasta informada pelo usuario!
         for (String pathname : nomeArquivos) {
-            // Print the names of files and directories
             System.out.println(pathname);
         }
 
@@ -91,7 +93,7 @@ public class Peer {
             switch (comando.toUpperCase()){
 
                 case "JOIN":
-
+                    // Caso comando join, inicia a thread responsável para entrar no servidor
                     Mensagem joinMessage = new Mensagem("JOIN", peerIPV4, peerSocket.getLocalPort(), aliveSocket.getLocalPort(), tcpSocket.getLocalPort(), nomeArquivos.stream().toArray(String[] :: new));
 
                     Jointhread jointhread = new Jointhread(peerSocket, serverAddress, joinMessage);
@@ -103,7 +105,7 @@ public class Peer {
                     break;
 
                 case "LEAVE":
-
+                    // Caso comando leave, inicia a thread responsável para sair do servidor
                     Mensagem leaveMsg = new Mensagem("LEAVE", peerSocket.getLocalPort());
 
                     Leavethread leaveThread = new Leavethread(serverAddress, leaveMsg);
@@ -114,7 +116,7 @@ public class Peer {
                     break;
 
                 case "SEARCH":
-
+                    // Caso comando SEARCH, inicia a thread responsável para procurar arquivos no servidor
                     String arqprocurado = new String();
 
                     System.out.println("Por favor digite o nome do arquivo procurado:");
@@ -128,7 +130,7 @@ public class Peer {
                     break;
 
                 case "DOWNLOAD":
-
+                    // Caso comando DOWNLOAD, inicia a thread responsável para fazer download de arquivo em outro peer
                     String arqname;
                     InetAddress peerServerAddress;
                     int peerServerPort;
@@ -147,6 +149,12 @@ public class Peer {
 
                     break;
 
+                case "EXIT":
+                    // Caso comando EXIT, fecha o Socket e finaliza o programa
+                    System.out.println("Encerrando o programa!");
+                    sc.close();
+
+                    return;
 
             }
         }
@@ -155,7 +163,7 @@ public class Peer {
 
 
     public static class Searchthread extends Thread{
-
+        // Thread responsavel pela busca de arquivos no servidor
         private String arquivoProcurado;
         private int tentativas=0;
         private InetAddress serverAddress;
@@ -174,7 +182,8 @@ public class Peer {
                 try {
 
                     DatagramSocket socket = new DatagramSocket();
-
+                    
+                    // Cria mensagem com o nome do arquivo procurado
                     Mensagem clientMsg = new Mensagem("SEARCH", arquivoProcurado, 0);
 
                     Gson gson = new Gson();
@@ -192,12 +201,14 @@ public class Peer {
 
                     socket.send(request);
 
+                    // Aguarda a resposta do Server
                     socket.receive(response);
 
                     String responseStr = new String(response.getData(), response.getOffset(), response.getLength());
 
                     Mensagem responseMsg = gson.fromJson(responseStr, Mensagem.class);
 
+                    // Verifica se a resposta do server esta adequada
                     if (responseMsg.requisicao.equals("SEARCH_OK") == false){
 
                         Exception e = new Exception("Resposta com requisicao invalida! Esperado: SEARCH_OK. Recebido: "+ responseMsg.requisicao);
@@ -205,6 +216,7 @@ public class Peer {
                         throw e;
                     }
 
+                    // Imprime o resultado da busca
                     System.out.println("Peers com arquivo solicitado: " + Arrays.toString(responseMsg.fontesDeArquivos));
 
                     tentativas= 5;
@@ -213,19 +225,18 @@ public class Peer {
 
 
                 } catch (Exception e) {
-                    // TODO Auto-generated catch block
-                    //e.printStackTrace();
 
+                    // Caso haja qualquer erro, incrementa o inteiro tentativas, e reinicia a busca
                     tentativas++;
                 }
 
-                if(tentativas >= 3){
-                    //System.out.println("Search concluida!");
-                }
-                else {
-                    //System.out.println("Nao foi possivel concluir a Search, conexao instavel!");
-                }
+                
 
+            }
+
+            if(tentativas <= 3){
+                // Apos 3 tentativas de procurar o arquivo sem sucesso, imprime um erro na tela
+                System.out.println("Nao foi possivel concluir a procura do arquivo " + arquivoProcurado);
             }
 
         }
@@ -233,7 +244,7 @@ public class Peer {
     }
 
     public static class DownloadController extends Thread{
-
+        // Classe Thread responsavel por receber pedidos de downloads de outro peers
         private ServerSocket listener;
 
         public DownloadController(ServerSocket ss){
@@ -244,28 +255,21 @@ public class Peer {
 
         public void run(){
 
-            //byte[] receivedData = new byte[1024];
-
             try {
 
-
                 while(true){
-
+                    // Aceita a conexao vinda de outro Peer
                     Socket s = listener.accept();
 
-                    //System.out.println("Requisicao de download recebida do Peer " + s.getLocalAddress());
-
+                    // Inicia uma thread para enviar o arquivo para o peer
                     DownloadSendThread sendt = new DownloadSendThread(s);
-
                     sendt.start();
 
+                    // continua aceitando novas conexoes
                 }
 
                 
             } catch (IOException e) {
-
-                // TODO Auto-generated catch block
-                //e.printStackTrace();
 
             }
 
@@ -274,8 +278,8 @@ public class Peer {
     }
 
     public static class DownloadReceiveThread extends Thread{
-
-
+        // Classe Thread responsavel por fazer o pedido de download e receber o arquivo
+        
         private int originport;
         private InetAddress originaddress;
         private InetAddress serverIP;
@@ -297,55 +301,32 @@ public class Peer {
 
             Mensagem fileOrder = new Mensagem("DOWNLOAD", filename, 0);
             GsonBuilder builder = new GsonBuilder();
-            //builder.disableHtmlEscaping();
-            //builder.setLenient();
+            
             Gson gson = builder.create();
 
             try{
-
+                // Cria um Socket, um DataInputStream, um PrintWritter e um BufferedReader para realizar a transacao de arquivo
                 Socket socket = new Socket(originaddress, originport);
                 DataInputStream dataInputS = new DataInputStream(socket.getInputStream());
-                //DataOutputStream dataOutS = new DataOutputStream(socket.getOutputStream());
                 PrintWriter pwout = new PrintWriter(socket.getOutputStream());
                 BufferedReader brin = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                //byte[] receivedData = new byte[1024];
+                
                 int bytes = 0;
     
-                // enviar a mensagem com o nome do arquivo solicitado
-
-                //System.out.println("Iniciando processo de download, enviando nome do arquivo...");
-
-                //byte[] sendData = new byte[1024];
+                // Envia uma mensagem com o nome do arquivo solicitado
                 String arqNameMsg = gson.toJson(fileOrder)+ "\n";  // verificando se o \n ira resolver
-                //sendData = arqNameMsg.getBytes();
-
-                //System.out.println("sendData tamanho do lado receive: " + sendData.length);
-    
-                
-                //dataOutS.writeChars(arqNameMsg);
-                //dataOutS.write(sendData, 0, sendData.length);
-                //dataOutS.flush();
 
                 pwout.print(arqNameMsg);;
                 pwout.flush();
     
-                // receber mensagem com aprovaçao e tamanho do arquivo, ou a negacao
-    
-                //dataInputS.read(receivedData, 0, receivedData.length);
+                // Recebe mensagem com aprovaçao e tamanho do arquivo, ou a negacao
                 String approvedStr;
                 approvedStr = brin.readLine();
 
-                //System.out.println("approvedStr :  " + approvedStr);
-
-                //System.out.println("Resposta recebida do peer de origem: "+ approvedStr);
-
-                //String receivedStr = new String(receivedData, 0, receivedData.length);
-
-
                 Mensagem receivedMsg = gson.fromJson(approvedStr, Mensagem.class); 
 
-
-                if (receivedMsg.requisicao.equals("DOWNLOAD_APPROVED") == false){
+                // Caso o Peer tenha negado o pedido de download, encerra o processo
+                if (!receivedMsg.requisicao.equals("DOWNLOAD_APPROVED")){
 
                     System.out.println("Peer " + originaddress + ":" + originport + " negou o download!");
                     socket.close();
@@ -353,33 +334,26 @@ public class Peer {
 
                 }
 
-                //System.out.println("Download aprovado, iniciando recepcao do arquivo....");
-
-                FileOutputStream fileOutStream = new FileOutputStream(fDest.getCanonicalPath()+"/"+filename);
+                // Cria um FileOutputStream, para escrever o arquivo recebido na pasta de arquivos
+                FileOutputStream fileOutStream = new FileOutputStream(pastaArquivos.getCanonicalPath()+"/"+filename);
 
                 long fileSize = receivedMsg.filelenght;
 
                 byte[] buffer = new byte[512*1024];
 
-                //System.out.println("tamanho do arquivo: " + fileSize);
-                //System.out.println("tamanho do buffer: " + buffer.length);
-
+                // Recebe o arquivo dividido em chuncks, para nao ter que ler o arquivo inteiro na memoria de uma unica vez
                 while (fileSize > 0 && (bytes = dataInputS.read(buffer, 0, (int)Math.min((long)buffer.length, fileSize))) != -1){
 
                     fileOutStream.write(buffer, 0, bytes);
                     fileOutStream.flush();
                     fileSize -= (long)bytes;
-                    
-                             
-                    //System.out.println("bytes faltantes: " + fileSize);
-
+                
                 }
                 
-
-                //System.out.println("fileSize: " + fileSize + ", bytes: " + bytes);
-
-                System.out.println("Arquivo " + filename + " baixado com sucesso na pasta " + fDest.getCanonicalPath());
-    
+                // Mensagem de Sucesso de download
+                System.out.println("Arquivo " + filename + " baixado com sucesso na pasta " + pastaArquivos.getCanonicalPath());
+                
+                // Inicia uma thread de update, para atualizar os arquivos que o peer possui no servidor
                 Updatethread upt = new Updatethread(serverIP, socket.getLocalAddress(), udpkeyport, filename);
 
                 upt.start();
@@ -396,14 +370,15 @@ public class Peer {
 
             }
 
-
         }
-
 
     }
 
-    public static class DownloadSendThread extends Thread{
 
+    public static class DownloadSendThread extends Thread{
+        // Classe thread responsavel por enviar o arquivo para o Peer que solicitou
+
+        // Necessario receber o socket que aceitou a conexao
         private Socket clientsocket;        
         
         public DownloadSendThread(Socket s){
@@ -416,36 +391,21 @@ public class Peer {
 
             try{
 
+                // Inicia os streams, writers e reader necessarios para fazer a comunicacao e enviar o arquivo
                 DataInputStream dataInputS = new DataInputStream(clientsocket.getInputStream());
                 DataOutputStream dataOutS = new DataOutputStream(clientsocket.getOutputStream());
                 PrintWriter pwout = new PrintWriter(clientsocket.getOutputStream());
                 BufferedReader brin = new BufferedReader(new InputStreamReader(clientsocket.getInputStream()));
 
-                //byte[] receivedData = new byte[1024];
-                
-
-                //System.out.println("Iniciando envio de arquivo, aguardando o nome do arquivo...");
-
-                // Vai ler aqui a Mensagem contendo o nome do arquivo a ser enviado!
-                //dataInputS.read(receivedData);
+                // Recebe a mensagem com o arquivo solicitado
                 String fileOrderStr = brin.readLine();
-                //System.out.println("fileorder: " + fileOrderStr);
-
-                //System.out.println("Nome do arquivo recebido!");
-
-                //String receivedStr = new String(receivedData, 0, receivedData.length);
-
-                //receivedStr.replace('\n', '\0');
-                //System.out.println("receivedStr: " + receivedStr);
 
                 GsonBuilder builder = new GsonBuilder();
-                //builder.disableHtmlEscaping();
-                //builder.setLenient();
                 Gson gson = builder.create();
 
                 Mensagem receivedMsg = gson.fromJson(fileOrderStr, Mensagem.class); 
 
-                File arqRequested = new File(fOrigin.getCanonicalPath()+"/"+receivedMsg.nomeArquivo);
+                File arqRequested = new File(pastaArquivos.getCanonicalPath()+"/"+receivedMsg.nomeArquivo);
 
                 Random rand = new Random();
                 int blockChance = rand.nextInt(10);
@@ -454,9 +414,7 @@ public class Peer {
                 // Bloqueia o download caso o arquivo nao exista, ou se o numero  0<=random<10 for menor que 3: 30% 
                 if (!receivedMsg.requisicao.equals("DOWNLOAD") || !arqRequested.exists() || (blockChance < 3)){
 
-                    // parar o codigo e enviar download negado.
-                    //System.out.println("O arquivo pedido nao existe na pasta de arquivos do peer!");
-
+                    // Envia a Mensagem de negacao do download, devido a erro de requisicao, inexistencia do arquivo ou chance aleatoria
                     Mensagem downloadFail = new Mensagem("DOWNLOAD_NEGADO");
                     String downFailStr = gson.toJson(downloadFail);
 
@@ -468,62 +426,49 @@ public class Peer {
 
                 FileInputStream fInputS = new FileInputStream(arqRequested);
 
-                //System.out.println("Download aprovado, enviando tamanho do arquivo...");
-
                 // enviar um download aprovado e o tamanho do arquivo
                 Mensagem downApproved = new Mensagem("DOWNLOAD_APPROVED", receivedMsg.nomeArquivo, arqRequested.length());
 
-                //byte[] sendData = new byte[1024];
                 String downApprovedStr = gson.toJson(downApproved);
 
-                //sendData = downApprovedStr.getBytes();
-
-                //dataOutS.writeChars(downApprovedStr);
+                // Envia a mensagem de download aprovado, com o tamanho do arquivo enviado
                 pwout.print(downApprovedStr+"\n");
                 pwout.flush();
 
 
-                // enviar em pedacinhos, verificar o tamanho ideal de buffer?
+                // Utilizando o buffer para enviar de forma fracionada o arquivo, para nao ter que 
+                // armazenar o arquivo inteiro na memoria ram
                 byte[] buffer = new byte[512*1024];
                 
                 int bytes = 0;
 
-                long start = System.currentTimeMillis();
-                long endtime;
+                // Le um pedaco do arquivo pelo fileInputStream, e escreve esse pedaco no DataOutStream
+                while ((bytes=fInputS.read(buffer)) != -1){
 
-                while (/*fileSize > 0*/ (bytes=fInputS.read(buffer)) != -1){
-
-                    
                     dataOutS.write(buffer, 0, bytes);
                     dataOutS.flush();
-                    
-                    //System.out.println("Bytes enviados: " + bytes);
 
                 }
-
-                endtime = System.currentTimeMillis();
-                //dataOutS.flush();
-                System.out.println("Arquivo enviado com sucesso em " + (endtime - start) + " milisegundos!");
 
                 dataInputS.close();
                 dataOutS.close();
                 fInputS.close();
 
-
             }
 
             catch(Exception e){
 
-                e.printStackTrace();
+                //e.printStackTrace();
             }
-
 
         }
 
     }
 
-    public static class Updatethread extends Thread{
 
+    public static class Updatethread extends Thread{
+        // Classe thread responsavel por atualizar a lista de arquivos que o Peer possui
+        
         private InetAddress serverAddress;
         private InetAddress peerAddres;
         private int udpport;
@@ -540,6 +485,7 @@ public class Peer {
 
         }
 
+
         public void run(){
 
             Mensagem updateMsg = new Mensagem("UPDATE", peerAddres, udpport, novoArquivo);
@@ -550,6 +496,9 @@ public class Peer {
 
                     DatagramSocket s = new DatagramSocket();
 
+                    // Cria mensagem de udpate, que contem o nome do novo arquivo a ser adcionado na lista
+                    
+
                     byte[] sendBuffer = new byte[1024];
                     byte[] receiveBuffer = new byte[1024];
 
@@ -558,20 +507,20 @@ public class Peer {
                     sendBuffer = gson.toJson(updateMsg).getBytes();
 
                     DatagramPacket updatePacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, 10098);
-                    DatagramPacket updateOkPacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
-
+                    DatagramPacket updateOkPacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);                    
                     
-
-                    s.setSoTimeout(2000);
-
                     s.send(updatePacket);
-
+                    
+                    // Define um tempo maximo de 2 segundos para receber a confirmacao de update
+                    s.setSoTimeout(2000);
                     s.receive(updateOkPacket);
+                    
 
                     String informationReceived = new String(updateOkPacket.getData(), updateOkPacket.getOffset(), updateOkPacket.getLength());
 
                     Mensagem response = gson.fromJson(informationReceived, Mensagem.class);
 
+                    // Verifica se a mensagem recebida tem a requisicao correta
                     if (response.requisicao.equals("UPDATE_OK")){
 
                         System.out.println("Lista de arquivos disponiveis atualizada com sucesso!");
@@ -587,9 +536,7 @@ public class Peer {
 
                     }
 
-
                 }
-            
                 catch(Exception e){
 
                     tentativas++;
@@ -597,21 +544,20 @@ public class Peer {
                 }
             }
 
+            // Caso em 3 tentativas sem sucesso de atualizar, informa o erro na tela
             if (tentativas <= 3){
 
                 System.out.println("Nao foi possivel atualizar a lista de arquivos no servidor, conexao instavel!");
 
             }
-            
-
 
         }
 
-
-        
     }
 
+
     public static class Leavethread extends Thread{
+        // Classe Thread responsavel por desconectar do servidor
 
         private InetAddress serverAddress=null;
         private Mensagem leaveMessage=null;
@@ -626,6 +572,7 @@ public class Peer {
 
         public void run(){
 
+            // Numero de tentativas: 3. 
             while (tentativas < 3){
 
                 try {
@@ -642,20 +589,20 @@ public class Peer {
                     DatagramPacket leavePacket = new DatagramPacket(sendBuffer, sendBuffer.length, serverAddress, 10098);
                     DatagramPacket leaveOkPacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
 
-                    socket.setSoTimeout(2000); // espera até 2 segundos a resposta de leave
-
                     socket.send(leavePacket);
 
+                    socket.setSoTimeout(2000); // espera até 2 segundos a resposta de leave
                     socket.receive(leaveOkPacket);
 
                     String informationReceived = new String(leaveOkPacket.getData(), leaveOkPacket.getOffset(), leaveOkPacket.getLength());
 
                     Mensagem response = gson.fromJson(informationReceived, Mensagem.class);
 
+                    // Verifica se a mensagem possui o tipo correto
                     if (response.requisicao.equals("LEAVE_OK")){
 
                         System.out.println("Saiu do server com sucesso!");
-                        // talvez deveria fechar o peer aqui?
+                        
                         tentativas += 5;
                         socket.close();
 
@@ -670,13 +617,12 @@ public class Peer {
                     
 
                 } catch (Exception e) {
-                    // TODO Auto-generated catch block
                     //e.printStackTrace();
                     tentativas++;
                 }
             }
             
-
+            // Caso nao seja possivel sair em 3 tentativas, exibe mensagem de erro
             if (tentativas <= 3){
 
                 System.out.println("Nao foi possivel sair do servidor, conexao instavel!");
@@ -689,6 +635,7 @@ public class Peer {
 
 
     public static class Alivethread extends Thread{
+        // Classe thread responsavel por manter o peer vivo no servidor
 
         private DatagramSocket aliveSocket=null;
 
@@ -710,49 +657,51 @@ public class Peer {
 
 
             while (true){
+
                 try {
 
-                    //System.out.println("Aguardando pacote alive...");
-
+                    // Aguarda indefinidamente um pacote de alive
                     aliveSocket.receive(serverAlivePacket);
-
-                    //System.out.println("Alive check recebido");
 
                     String serverText = new String(serverAlivePacket.getData(), serverAlivePacket.getOffset(), serverAlivePacket.getLength());
 
                     Mensagem serverAliveMsg = gson.fromJson(serverText, Mensagem.class);
 
+                    // Verifica a corretude da mensagem recebida
                     if (serverAliveMsg.requisicao.equals("ALIVE")){
 
+                        // Cria a mensagem de resposta ALIVE_OK
                         Mensagem aliveOK = new Mensagem("ALIVE_OK");
 
                         sendData = gson.toJson(aliveOK).getBytes();
 
+                        // Define de forma dinamica a porta e o endereco do server, para poder
+                        // lidar com os diversos threads e diversos sockets criados pelo server
                         peerAliveOK.setAddress(serverAlivePacket.getAddress());
                         peerAliveOK.setPort(serverAlivePacket.getPort());
 
                         peerAliveOK.setData(sendData);
 
+                        // Eniva a mensagem ALIVE OK
                         aliveSocket.send(peerAliveOK);
 
-                        //System.out.println("Alive OK enviado");
-
                     }
-
-                } catch (IOException e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
+                }
+                catch (IOException e) {
+                    //e.printStackTrace();
                 }
             }
         }   
 
     }
 
-    public static class Jointhread extends Thread{     // so aceita se for static, quais sao as consequencias?
 
+    public static class Jointhread extends Thread{     
+        // Classe thread responsavel por entrar no servidor
+        
         private InetAddress serverAddress=null;
         private Mensagem joinMessage=null;
-        private DatagramSocket peerSocket=null;
+        private DatagramSocket peerSocket=null; // usado apenas para manter a constancia de porta udp impressa
         private int tentativas=0;
 
         public Jointhread(DatagramSocket ps, InetAddress server, Mensagem msg){
@@ -781,7 +730,6 @@ public class Peer {
 
                     DatagramSocket peerSocket2 = new DatagramSocket();
 
-                    // avaliar a necessidade de usar o msm socket da main
                     peerSocket2.send(clientPacket);
 
                     peerSocket2.receive(serverResponsePacket);
@@ -790,6 +738,7 @@ public class Peer {
 
                     Mensagem response = gson.fromJson(informationReceived, Mensagem.class);
 
+                    // Verifica a corretude da mensagem recebida
                     if (response.requisicao.equals("JOIN_OK")){
                         tentativas = 5;
                         System.out.println("Sou peer " + peerSocket.getLocalAddress() + ":" + peerSocket.getLocalPort() + " com arquivos " + Arrays.toString(joinMessage.arquivos));
@@ -803,18 +752,12 @@ public class Peer {
 
 
                 } catch (IOException e) {
-                    // TODO Auto-generated catch block
-                    //e.printStackTrace();
-                    //System.out.println("Pedido de JOIN falhou, tentando novamente...");
                     tentativas++;
                 }
-            }
-            
+            } 
         
         }
 
     }
 
-
-    
 }

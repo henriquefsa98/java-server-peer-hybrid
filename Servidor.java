@@ -42,19 +42,14 @@ public class Servidor{
             }
         }
 
-        //System.out.println("Server: Lista de clientes que possuem o arquivo " + nomeArquivo + ": ");
-
-        //System.out.println(Arrays.toString(resultados.toArray(new String[0])));
-
         return resultados.toArray(new String[0]);
 
     }
 
-    public static void imprimeClientesLogados(){   // criando essa func para chamar em todos os momentos que o hashmap for modificado!
-
+    public static void imprimeClientesLogados(){   
+        // Funcao que imprime a lista de clientes logados
         System.out.println("\n-------------------------\n\nClientes Logados:\n");
 
-        // imprimir o mapa aqui pra ver se esta funcionando!
         for (Map.Entry<String, Mensagem> entry : clientesLogados.entrySet()) {
             System.out.println(entry.getKey()+":");
             entry.getValue().printMensagem();
@@ -74,41 +69,33 @@ public class Servidor{
         while(true){
 
             byte[] receivedBuffer = new byte[1024];
-            //byte[] sendBuffer = new byte[1024];
             Gson gson = new Gson();
 
             DatagramPacket receivedPacket = new DatagramPacket(receivedBuffer, receivedBuffer.length);
 
-
-            //System.out.println("Aguardando pacote...");
-
+            // Aguarda o recebimento de algum pacote UDP
             serverSocket.receive(receivedPacket);
 
+            // Serializa o pacote recebido (bytes) em uma instancia da Classe Mensagem 
             String stringClient = new String(receivedPacket.getData(), receivedPacket.getOffset(), receivedPacket.getLength());
-
             Mensagem msgClient = gson.fromJson(stringClient, Mensagem.class);
 
-            //System.out.println(msgClient);
-            //System.out.println("\nMensagem recebida do cliente:\n");
-            //msgClient.printMensagem();
-            //System.out.println();
 
+            // Captura as informacoes de rede do pacote recebido
             InetAddress clientAddress = receivedPacket.getAddress();
             int clientPort = receivedPacket.getPort();
 
-            //System.out.println("Endereco do peer: " + clientAddress);
-            //System.out.println("Ednereco getSocketAddress do pck do peer: " + receivedPacket.getSocketAddress());
-
+            // Switch para tratar todos os tipos de requisicoes
             switch (msgClient.requisicao){
 
                 case "JOIN":
-
+                    // Caso receba um pedido de JOIN, inicia uma thread de Join enviando os dados necessários
                     JointhreadServer jts = new JointhreadServer(serverSocket, msgClient.ipv4client, clientPort, msgClient);
                     jts.start();
                     break;
 
                 case "LEAVE":
-
+                    // Caso receba um pedido de LEAVE, inicia uma thread de LEAVE enviando os dados necessários
                     LeavethreadServer leaveThread = new LeavethreadServer(clientPort, msgClient.udpport, clientAddress);
                     System.out.println("chave de clilog de saida: " + clientAddress.toString()+":"+msgClient.udpport);
                     System.out.println("Peer " + clientAddress.getHostAddress() + ":" + clientPort + " saiu. Eliminando seus arquivos " + Arrays.toString(clientesLogados.get(clientAddress.toString()+":"+msgClient.udpport).arquivos));
@@ -118,19 +105,18 @@ public class Servidor{
                     break;
 
                 case "SEARCH":
-
+                    // Caso receba um pedido de SEARCH, inicia uma thread de Search enviando os dados necessários
                     SearchthreadServer sts = new SearchthreadServer(clientAddress, clientPort, msgClient.nomeArquivo);
 
                     System.out.println("Peer " + receivedPacket.getAddress().getHostAddress() + ":" + receivedPacket.getPort() + " solicitou arquivo " + msgClient.nomeArquivo);
-
 
                     sts.start();
 
                     break;
 
                 case "UPDATE":
-
-                    UpdatethreadServer upserver = new UpdatethreadServer(msgClient, receivedPacket.getPort());
+                    // Caso receba um pedido de UPDATE, inicia uma thread de Update enviando os dados necessários
+                    UpdatethreadServer upserver = new UpdatethreadServer(msgClient, clientPort);
 
                     upserver.start();
 
@@ -144,20 +130,22 @@ public class Servidor{
     }
 
     public static class UpdatethreadServer extends Thread{
+        // Classe de Thread responsavel pelo update da lista de arquivos que um Peer possui
 
+        // Dados necessarios: Mensagem de Update contendo o novo arquivo, e a porta UDP
         private Mensagem updateMsg;
         private int udpResponseport;
 
         public UpdatethreadServer(Mensagem upmsg, int udpp){
 
             updateMsg = upmsg;
-            udpResponseport = udpp;
+            udpResponseport = udpp; // porta udp de update do peer
         }
 
         
         public void run(){
 
-
+            // Verifica se a mensagem de Update esta correta
             if (!updateMsg.requisicao.equals("UPDATE") || updateMsg.nomeArquivo.equals("") || updateMsg.udpport==-1){
 
                 System.out.println("Requisicao de update invalida, cancelando operacao!");
@@ -167,7 +155,8 @@ public class Servidor{
 
 
             try{
-
+                
+                System.out.println("Pedido de update recebido");
                 DatagramSocket s = new DatagramSocket();
 
                 Mensagem updateOK = new Mensagem("UPDATE_OK");
@@ -180,26 +169,34 @@ public class Servidor{
 
                 DatagramPacket updateOKPacket = new DatagramPacket(sendBuffer, sendBuffer.length, updateMsg.ipv4client, udpResponseport);
 
-                s.send(updateOKPacket);
-
-                Mensagem updateClient = clientesLogados.get(updateMsg.ipv4client+":"+udpResponseport);
-
+                // Captura a mensagem atual do peer no servidor
+                Mensagem updateClient = clientesLogados.get(updateMsg.ipv4client+":"+ updateMsg.udpport);
+                
+                // Cria uma nova lista de arquivos
                 ArrayList<String> novosArquivos = new ArrayList<>();
 
+                // Adciona os arquivos ja existentes na lista do server
                 Collections.addAll(novosArquivos, updateClient.arquivos);
 
+                // Adiciona o novo arquivo contido na mensagem de update
                 novosArquivos.add(updateMsg.nomeArquivo);
 
                 updateClient.arquivos = novosArquivos.toArray(new String[0]);
 
+                // Substitui a lista antiga pela nova lista atualizada de arquivos do Peer no server
                 clientesLogados.replace((updateMsg.ipv4client+":"+udpResponseport), updateClient);
+                
 
+                s.send(updateOKPacket);
+                
                 s.close();
 
+                
             }
             catch(Exception e){
-
-
+                System.out.println("erro no update:\n");
+                e.printStackTrace();
+                
             }
    
 
@@ -209,7 +206,9 @@ public class Servidor{
 
 
     public static class SearchthreadServer extends Thread{
+        // Classe de Thread responsavel pela busca de arquivos na lista de Peers logados no server
 
+        // Dados necessarios: porta udp, nome do arquivo procurado e endereco do peer
         private int udpport;
         private String arquivoProcurado;
         private InetAddress peerAddress;
@@ -225,8 +224,11 @@ public class Servidor{
 
         public void run(){
 
+
+            // Chama a funcao procuraArquivoNaLista(), que ira retornar uma lista dos peers que possuem o arquivo desejado
             String[] resultado = procuraArquivoNaLista(arquivoProcurado);
 
+            // Cria mensagem de resposta, contendo a lista de peers que possuem o arquivo procurado
             Mensagem responseMsg = new Mensagem("SEARCH_OK", resultado);
 
             try {
@@ -237,6 +239,7 @@ public class Servidor{
 
                 byte[] sendData = new byte[1024];
 
+                // Serializa a mensagem de resposta, e transforma em um vetor de bytes
                 sendData = gson.toJson(responseMsg).getBytes();
 
                 DatagramPacket response = new DatagramPacket(sendData, sendData.length, peerAddress, udpport);
@@ -247,8 +250,8 @@ public class Servidor{
 
 
             } catch (Exception e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+
+                //e.printStackTrace();
             }
 
         }
@@ -256,7 +259,9 @@ public class Servidor{
     }
 
     public static class LeavethreadServer extends Thread{
+        // Classe de Thread responsavel por remover um cliente da lista
 
+        // Dados necessarios
         private int leaveport; // para responder o leave
         private int udpport;   // para deletar o peer da lista de clientes logados
         private InetAddress peerAddress;
@@ -271,6 +276,7 @@ public class Servidor{
 
         public void run(){
 
+            // Cria a mensagem de resposta LEAVE_OK
             Mensagem leaveOK = new Mensagem("LEAVE_OK");
 
             byte[] sendData = new byte[1024];
@@ -285,33 +291,30 @@ public class Servidor{
 
                 DatagramSocket socket = new DatagramSocket();
 
-                socket.setSoTimeout(500);
-
                 socket.send(leaveOKPacket);
 
+                // Utiliza o endereco do peer e a porta udp para criar a chave da lista de clientes logados
                 String keyRemove = peerAddress + ":" + udpport;
 
+                // Utiliza a chave criada para remover o cliente da lista
                 removeCliente(keyRemove);
 
                 socket.close();
 
 
             } catch (Exception e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+                //e.printStackTrace();
             }
-
-
-
-
 
         }
 
-
     }
 
-    public static class AlivethreadServer extends Thread{
 
+    public static class AlivethreadServer extends Thread{
+        // Classe responsavel por manter o processo de alive para cada cliente logado 
+
+        // Dados necessarios
         private InetAddress peerAddress;
         private int alivePort;
         private int udpport; // para conseguir remover da lista
@@ -328,9 +331,9 @@ public class Servidor{
 
             try {
 
-                //System.out.println("Thread alive indo pro sleep");
-                sleep(5000);  // sleep de 50 ms
-                //System.out.println("Thread alive acordou!");
+                // Dorme por 30 segundos, para verificar se o peer ainda esta online
+                sleep(30000);
+                
 
                 DatagramSocket serverSocket = new DatagramSocket();
 
@@ -342,6 +345,7 @@ public class Servidor{
                 DatagramPacket serverAlivePacket = new DatagramPacket(responseData, responseData.length);
                 DatagramPacket peerAliveOK = new DatagramPacket(sendData, sendData.length);
 
+                // Cria mensagem de alive
                 Mensagem alive = new Mensagem("ALIVE");
                 
                 serverAlivePacket.setData(gson.toJson(alive).getBytes());
@@ -354,7 +358,8 @@ public class Servidor{
 
                 try{
 
-                    serverSocket.setSoTimeout(500);//  timeout de 500 ms
+                    // Aguarda por 1 segundo a resposta de ALIVE OK vinda do peer
+                    serverSocket.setSoTimeout(500);//  timeout de 1s, tempo maximo para o peer responder
                     serverSocket.receive(peerAliveOK);  
 
                     String peerText = new String(peerAliveOK.getData(), peerAliveOK.getOffset(), peerAliveOK.getLength());
@@ -362,6 +367,7 @@ public class Servidor{
 
                     Mensagem peerMsg = gson.fromJson(peerText, Mensagem.class);
 
+                    // Verifica se a mensagem recebida corresponde ao ALIVE_OK
                     if (peerMsg.requisicao.equals("ALIVE_OK") != true){
 
                         Exception e = new Exception("Peer [IP]:[porta] morto. Eliminando seus arquivos [só nome dos arquivos]");
@@ -371,9 +377,7 @@ public class Servidor{
                     }
                     else{  
 
-                        //System.out.println("Peer: " + peerAliveOK.getAddress() + ':' + peerAliveOK.getPort() + " esta alive!");
-
-                        // alive recursivo!
+                        // Cria um novo thread de alive para o mesmo peer, para manter o processo de forma recursiva
                         AlivethreadServer recurrent = new AlivethreadServer(peerAddress, alivePort, udpport);
                         recurrent.start();
 
@@ -393,7 +397,7 @@ public class Servidor{
 
 
             } catch (Exception e) {
-                // TODO Auto-generated catch block
+                
                 //e.printStackTrace();
             }
 
@@ -401,7 +405,9 @@ public class Servidor{
 
     }
 
+
     public static class JointhreadServer extends Thread {
+        // Classe de thread responsavel para cuidar do pedido de entrada do Peer
 
         private InetAddress peerAddress=null;
         private int clientport;
@@ -422,22 +428,19 @@ public class Servidor{
             // Valida se a requisicao de join esta completa, como a req correta, endereco ip e as devidas portas
             if (!joinMessage.requisicao.equals("JOIN") || joinMessage.ipv4client==null || joinMessage.udpport==-1 || joinMessage.tcpport==-1 || joinMessage.udpAlivePort==-1){  
                 System.out.println("Requisicao invalida para join!");
-                joinMessage.printMensagem();
-                System.out.println(joinMessage.requisicao + " != JOIN = " + (joinMessage.requisicao != "JOIN"));
                 return;
             }
-
-            //System.out.println("Endereco do peer no threadjoinserver: " + peerAddress);
 
 
             byte[] responseData = new byte[1024];
 
             Gson gson = new Gson();
 
-            System.out.println("chave de clientelogados: " + joinMessage.ipv4client.toString() + ':' + joinMessage.udpport);
+            //System.out.println("chave de clientelogados: " + joinMessage.ipv4client.toString() + ':' + joinMessage.udpport);
 
             clientesLogados.put((joinMessage.ipv4client.toString() + ':' + joinMessage.udpport), joinMessage);
 
+            // Cria a mensagem de Join OK para enviar ao Peer
             Mensagem resposta = new Mensagem("JOIN_OK");
 
             responseData = gson.toJson(resposta).getBytes();
@@ -450,16 +453,13 @@ public class Servidor{
 
                 serverSocket.send(serverResponsePacket);
 
-                //imprimeClientesLogados();
-
+                // Inicia o processo de alive, para garantir que o Peer recem conectado se matenha vivo
                 AlivethreadServer verificadorAlive = new AlivethreadServer(peerAddress, joinMessage.udpAlivePort, joinMessage.udpport);
                 verificadorAlive.start();  // inicia verificador alive
 
             } catch (IOException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+                //e.printStackTrace();
             }
-
 
         }
 

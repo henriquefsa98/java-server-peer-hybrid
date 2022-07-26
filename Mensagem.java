@@ -77,7 +77,7 @@ public class Mensagem {
     }
 
 
-
+    // Metodo para imprimir informacoes basicas da mensagem
     public void printMensagem(){
 
         System.out.println("Mensagem{ Requisicao: " + requisicao + ", IP:" + ipv4client + ", UDP: " + udpport + ", AlivePort: " + udpAlivePort + ", TCP: " + tcpport + ", Arquivos: " + Arrays.toString(arquivos) +" }");
