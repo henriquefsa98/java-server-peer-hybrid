@@ -90,7 +90,7 @@ public class Servidor{
 
                 case "JOIN":
                     // Caso receba um pedido de JOIN, inicia uma thread de Join enviando os dados necessários
-                    JointhreadServer jts = new JointhreadServer(serverSocket, msgClient.ipv4client, clientPort, msgClient);
+                    JointhreadServer jts = new JointhreadServer(msgClient.ipv4client, clientPort, msgClient);
                     jts.start();
                     break;
 
@@ -156,7 +156,7 @@ public class Servidor{
 
             try{
                 
-                System.out.println("Pedido de update recebido");
+                
                 DatagramSocket s = new DatagramSocket();
 
                 Mensagem updateOK = new Mensagem("UPDATE_OK");
@@ -291,13 +291,13 @@ public class Servidor{
 
                 DatagramSocket socket = new DatagramSocket();
 
-                socket.send(leaveOKPacket);
-
                 // Utiliza o endereco do peer e a porta udp para criar a chave da lista de clientes logados
                 String keyRemove = peerAddress + ":" + udpport;
 
                 // Utiliza a chave criada para remover o cliente da lista
                 removeCliente(keyRemove);
+
+                socket.send(leaveOKPacket);
 
                 socket.close();
 
@@ -359,7 +359,7 @@ public class Servidor{
                 try{
 
                     // Aguarda por 1 segundo a resposta de ALIVE OK vinda do peer
-                    serverSocket.setSoTimeout(500);//  timeout de 1s, tempo maximo para o peer responder
+                    serverSocket.setSoTimeout(1000);//  timeout de 1s, tempo maximo para o peer responder
                     serverSocket.receive(peerAliveOK);  
 
                     String peerText = new String(peerAliveOK.getData(), peerAliveOK.getOffset(), peerAliveOK.getLength());
@@ -414,9 +414,9 @@ public class Servidor{
         private Mensagem joinMessage=null;
         private DatagramSocket serverSocket =null;
 
-        public JointhreadServer(DatagramSocket serversocket, InetAddress clienaddr, int port, Mensagem msg){
+        public JointhreadServer(InetAddress clienaddr, int port, Mensagem msg){
 
-            serverSocket = serversocket;
+            
             joinMessage = msg;
             peerAddress = clienaddr;
             clientport = port;
@@ -450,12 +450,14 @@ public class Servidor{
             System.out.println("Peer " + peerAddress.getHostAddress() + ":" + clientport + " adicionado com arquivos " + Arrays.toString(joinMessage.arquivos));
 
             try {
-
+                serverSocket = new DatagramSocket();
                 serverSocket.send(serverResponsePacket);
 
                 // Inicia o processo de alive, para garantir que o Peer recem conectado se matenha vivo
                 AlivethreadServer verificadorAlive = new AlivethreadServer(peerAddress, joinMessage.udpAlivePort, joinMessage.udpport);
                 verificadorAlive.start();  // inicia verificador alive
+
+                serverSocket.close();
 
             } catch (IOException e) {
                 //e.printStackTrace();

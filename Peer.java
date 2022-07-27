@@ -197,7 +197,7 @@ public class Peer {
                     DatagramPacket response = new DatagramPacket(responseData, responseData.length);
 
 
-                    socket.setSoTimeout(500);
+                    socket.setSoTimeout(2000);
 
                     socket.send(request);
 
